@@ -234,9 +234,19 @@ app.get('/board', ifNotLoggedin, function (req, res, next) {
         if (err) {
             return next(err);
         }
-        const username = result.rows[0].name;
-        const nemeValue = req.query.neme;
-        res.render('board', { username: username, nemeValue: nemeValue });
+        dbConnection.query("SELECT vegetable_name FROM data_vegetable", (err, result1) => {
+            if (err) {
+                return res.status(500).send('Internal Server Error');
+            }
+            const vegetables = result1.rows.map(row => row.vegetable_name);
+            
+            const username = result.rows[0].name;
+            const nemeValue = req.query.neme;
+            res.render('board', { username: username, nemeValue: nemeValue, vegetables: vegetables });
+        });
+       
+        
+        
     });
 });
 
@@ -371,6 +381,128 @@ app.post('/deleteData', ifNotLoggedin, (req, res) => {
         });
 });
 
+app.post('/deleteData', ifNotLoggedin, (req, res) => {
+    const { token } = req.body;
+
+    // ตรวจสอบว่า token ถูกต้องหรือไม่
+    dbConnection.query("SELECT * FROM board WHERE token=$1", [token])
+        .then((result) => {
+            if (result.rows.length > 0) {
+                // ถ้าพบ token ให้ลบข้อมูล
+                dbConnection.query("DELETE FROM board WHERE token=$1", [token])
+                    .then(() => {
+                        res.send("<script>alert('ลบข้อมูลแล้ว'); window.location.href = '/user';</script>");
+                    })
+                    .catch((err) => {
+                        console.error(err);
+                        res.status(500).send("เกิดข้อผิดพลาดในการลบข้อมูล");
+                    });
+            } else {
+                // ถ้าไม่พบ token ให้แสดงข้อความว่าไม่พบข้อมูล
+                res.status(404).send("ไม่พบข้อมูล");
+            }
+        })
+        .catch((err) => {
+            console.error(err);
+            res.status(500).send("เกิดข้อผิดพลาดในการค้นหาข้อมูล");
+        });
+});
+
+app.post('/datapumwater', (req, res) => {
+    const { token } = req.body;
+
+    // ตรวจสอบว่ามี token หรือไม่
+    if (!token) {
+        return res.status(400).send('Missing token.');
+    }
+
+    // คิวรี่ข้อมูลจากฐานข้อมูลโดยใช้ token เป็นเงื่อนไข
+    dbConnection.query('SELECT status, time FROM board WHERE token = $1', [token])
+        .then(result => {
+            if (result.rows.length > 0) {
+                // ส่งข้อมูลที่ได้จากฐานข้อมูลกลับไปให้เซิร์ฟเวอร์
+                res.status(200).json(result.rows);
+            } else {
+                res.status(404).send('Data not found.');
+            }
+        })
+        .catch(error => {
+            console.error('Error querying database:', error);
+            res.status(500).send('Internal server error.');
+        });
+});
+
+
+app.post('/waterpum', (req, res) => {
+    const { token, status, time } = req.body;
+
+    // ตรวจสอบข้อมูลที่ส่งมาและไม่ว่างเปล่า
+    if (!token || status === undefined || time === undefined) {
+        return res.status(400).send(req.body);
+    }
+    
+   
+    dbConnection.query("UPDATE board SET status = $1, time = $2 WHERE token = $3", [status, time, token])
+        .then(() => {
+            res.status(200).send("Status and time updated successfully");
+        })
+        .catch((err) => {
+            console.error(err);
+            res.status(500).send("Internal Server Error");
+        });
+});
+
+app.post('/confirm_data', (req, res) => {
+    const { token , vegetable } = req.body;
+    
+    dbConnection.query("UPDATE board SET vegetable_name = $1 WHERE token = $2", [vegetable, token])
+        .then(() => {
+            res.send("<script>alert('เพิ่มข้อมูลผักแล้ว'); history.back();</script>");
+        
+        })
+        .catch((err) => {
+            console.error(err);
+            res.status(500).send("Internal Server Error");
+        });
+
+   
+});
+
+app.post('/Datasensor', (req, res) => {
+    const { token } = req.body;
+
+    // ตรวจสอบว่ามี token หรือไม่
+    if (!token) {
+        return res.status(400).send('Missing token.');
+    }
+
+    // คิวรี่ข้อมูลจากฐานข้อมูลโดยใช้ token เป็นเงื่อนไข
+    dbConnection.query('SELECT vegetable_name FROM board WHERE token = $1', [token])
+        .then(result => {
+            if (result.rows.length > 0) {
+                dbConnection.query('SELECT * FROM data_vegetable WHERE vegetable_name = $1', [result.rows[0].vegetable_name])
+                    .then(result1 => {
+                        if (result1.rows.length > 0) {
+                            // ส่งข้อมูลที่ได้จากฐานข้อมูลกลับไปให้เซิร์ฟเวอร์
+                            res.status(200).json(result1.rows);
+                        } else {
+                            res.status(404).send('Data not found.');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error querying database:', error);
+                        res.status(500).send('Internal server error.');
+                    });
+            } else {
+                res.status(404).send('Data not found.');
+            }
+        })
+        .catch(error => {
+            console.error('Error querying database:', error);
+            res.status(500).send('Internal server error.');
+        });
+
+});
 
 // LOGOUT
 app.get('/logout', (req, res) => {
